@@ -5,6 +5,11 @@ import openai
 # Set the title and a fun icon for the browser tab.
 st.set_page_config(page_title="SAP Test Case Generator", page_icon="🧪")
 
+# --- Initialize Session State ---
+# This creates a "memory" for the app to store the last generated test case.
+if 'last_generated_case' not in st.session_state:
+    st.session_state.last_generated_case = ""
+
 # --- Securely access the API key ---
 # Streamlit will automatically look for the key in the .streamlit/secrets.toml file
 client = openai.OpenAI(
@@ -14,9 +19,7 @@ client = openai.OpenAI(
 # --- The Core Function (Updated) ---
 # The function now accepts a 'test_type' argument
 def generate_test_steps(transaction_code, test_case_title, test_type):
-    """Calls the OpenAI API to generate detailed test steps based on test type."""
-    
-    # We create a more dynamic prompt based on the user's choice
+    """Calls the OpenAI API to generate detailed test steps."""
     prompt = f"""
     Write a detailed '{test_type}' test case for the SAP transaction '{transaction_code}'.
     The test case title is: '{test_case_title}'.
@@ -27,15 +30,39 @@ def generate_test_steps(transaction_code, test_case_title, test_type):
     Please provide the following sections:
     1.  **Objective:** A one-sentence goal for this test case.
     2.  **Prerequisites:** Any data or configuration that must be ready.
-    3.  **Test Steps:** A numbered list of clear, step-by-step actions. For each step, include the action, data to enter, and the expected result (which could be an error message for a negative test).
+    3.  **Test Steps:** A numbered list of clear, step-by-step actions.
     4.  **Final Expected Result:** The overall successful or failed outcome.
     """
-    
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a senior SAP Quality Assurance engineer. Your task is to write detailed, step-by-step test cases for SAP transactions in a clear, structured format, differentiating between positive and negative scenarios."},
+                {"role": "system", "content": "You are a senior SAP Quality Assurance engineer who writes detailed, structured test cases."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"An error occurred: {e}"
+
+# --- NEW: Function to generate test data ---
+def generate_test_data(test_case_text):
+    """Calls the OpenAI API to generate sample data for a given test case."""
+    prompt = f"""
+    Based on the following SAP test case, generate a simple table of realistic, sample test data.
+    The data should include plausible values for the key input fields mentioned in the test steps.
+    Format the output as a clean markdown table.
+
+    Test Case:
+    ---
+    {test_case_text}
+    ---
+    """
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that generates sample test data for SAP test cases."},
                 {"role": "user", "content": prompt}
             ]
         )
@@ -48,29 +75,34 @@ st.title("SAP Test Case Detail Generator 📝")
 
 sap_transaction = st.text_input(
     "Enter the SAP Transaction Code:", 
-    placeholder="e.g., VA01"
+    placeholder="e.g., ME21N"
 )
-
 test_case_title = st.text_input(
     "Enter the Test Case Title:",
-    placeholder="e.g., Create Sales Order with an invalid material"
+    placeholder="e.g., Create a standard Purchase Order"
 )
-
-# --- NEW: Dropdown to select test type ---
 test_type = st.selectbox(
     "Select the type of test case:",
     ("Positive (Happy Path)", "Negative (Error Handling)")
 )
 
-# --- Button Logic (Updated) ---
 if st.button("Generate Detailed Steps"):
     if sap_transaction and test_case_title:
-        with st.spinner(f"AI is crafting the '{test_type}' steps for '{test_case_title}'... ✍️"):
-            # We now pass the 'test_type' to our function
+        with st.spinner("AI is crafting the steps... ✍️"):
             generated_steps = generate_test_steps(sap_transaction, test_case_title, test_type)
+            st.session_state.last_generated_case = generated_steps # Save to memory
             st.success("Here is your detailed test case:")
-            st.markdown(generated_steps)
+            st.markdown(st.session_state.last_generated_case)
     else:
         st.error("Please enter both an SAP transaction code and a test case title.")
+
+# --- NEW: Conditional UI for generating test data ---
+# This section only appears if a test case has been generated and stored in memory.
+if st.session_state.last_generated_case:
+    st.info("Now you can generate sample data for the test case above.")
+    if st.button("Generate Test Data 📊"):
+        with st.spinner("AI is generating sample data... 🔢"):
+            generated_data = generate_test_data(st.session_state.last_generated_case)
+            st.markdown(generated_data)
 
 

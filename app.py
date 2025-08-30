@@ -12,24 +12,30 @@ client = openai.OpenAI(
 )
 
 # --- The Core Function (Updated) ---
-def generate_test_steps(transaction_code, test_case_title):
-    """Calls the OpenAI API to generate detailed test steps."""
-    # This new prompt is much more specific about the desired output format.
+# The function now accepts a 'test_type' argument
+def generate_test_steps(transaction_code, test_case_title, test_type):
+    """Calls the OpenAI API to generate detailed test steps based on test type."""
+    
+    # We create a more dynamic prompt based on the user's choice
     prompt = f"""
-    Write a detailed test case for the SAP transaction '{transaction_code}'.
+    Write a detailed '{test_type}' test case for the SAP transaction '{transaction_code}'.
     The test case title is: '{test_case_title}'.
 
+    - If this is a 'Positive (Happy Path)' test, the steps must lead to a successful transaction completion.
+    - If this is a 'Negative (Error Handling)' test, the steps must intentionally include an incorrect action or invalid data to trigger a specific, predictable error message.
+
     Please provide the following sections:
-    1.  **Prerequisites:** Any data or configuration that must be ready before testing.
-    2.  **Test Steps:** A numbered list of clear, step-by-step actions. For each step, include the action to perform, any data to enter, and the expected result.
-    3.  **Final Expected Result:** The overall successful outcome of the test case.
+    1.  **Objective:** A one-sentence goal for this test case.
+    2.  **Prerequisites:** Any data or configuration that must be ready.
+    3.  **Test Steps:** A numbered list of clear, step-by-step actions. For each step, include the action, data to enter, and the expected result (which could be an error message for a negative test).
+    4.  **Final Expected Result:** The overall successful or failed outcome.
     """
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini", # Using a slightly more capable model can improve detailed responses
+            model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a senior SAP Quality Assurance engineer. Your task is to write detailed, step-by-step test cases for SAP transactions in a clear, structured format."},
+                {"role": "system", "content": "You are a senior SAP Quality Assurance engineer. Your task is to write detailed, step-by-step test cases for SAP transactions in a clear, structured format, differentiating between positive and negative scenarios."},
                 {"role": "user", "content": prompt}
             ]
         )
@@ -37,33 +43,34 @@ def generate_test_steps(transaction_code, test_case_title):
     except Exception as e:
         return f"An error occurred: {e}"
 
-# --- UI Elements ---
-# This creates the main title on the page.
+# --- UI Elements (Updated) ---
 st.title("SAP Test Case Detail Generator 📝")
 
-st.info("First, generate test case titles, then use one of those titles here to get the detailed steps.")
-
-# This creates a text input box where the user can type the transaction code.
-# The text they type will be stored in the 'sap_transaction' variable.
 sap_transaction = st.text_input(
-    "Enter the SAP Transaction Code (e.g., VA01, ME21N):", 
+    "Enter the SAP Transaction Code:", 
     placeholder="e.g., VA01"
 )
 
-# New input field for the test case title
 test_case_title = st.text_input(
-    "Enter the Test Case Title you want to detail:",
-    placeholder="e.g., Create Sales Order with Valid Customer"
+    "Enter the Test Case Title:",
+    placeholder="e.g., Create Sales Order with an invalid material"
+)
+
+# --- NEW: Dropdown to select test type ---
+test_type = st.selectbox(
+    "Select the type of test case:",
+    ("Positive (Happy Path)", "Negative (Error Handling)")
 )
 
 # --- Button Logic (Updated) ---
 if st.button("Generate Detailed Steps"):
-    # Check if both fields have input
     if sap_transaction and test_case_title:
-        with st.spinner(f"AI is crafting the steps for '{test_case_title}'... ✍️"):
-            generated_steps = generate_test_steps(sap_transaction, test_case_title)
+        with st.spinner(f"AI is crafting the '{test_type}' steps for '{test_case_title}'... ✍️"):
+            # We now pass the 'test_type' to our function
+            generated_steps = generate_test_steps(sap_transaction, test_case_title, test_type)
             st.success("Here is your detailed test case:")
             st.markdown(generated_steps)
     else:
         st.error("Please enter both an SAP transaction code and a test case title.")
+
 
